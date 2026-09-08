@@ -1,0 +1,229 @@
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local hrp = character:WaitForChild("HumanoidRootPart")
+
+-- Biến cấu hình
+local autoJumpEnabled = false
+local jumpDelay = 0.08
+
+-- Cập nhật Character khi respawn
+player.CharacterAdded:Connect(function(newChar)
+    character = newChar
+    hrp = character:WaitForChild("HumanoidRootPart")
+end)
+
+-- Tối ưu vị trí chứa GUI tương thích Executor
+local parentGui
+if gethui then
+    parentGui = gethui()
+elseif syn and syn.protect_gui then
+    local gui = Instance.new("ScreenGui")
+    syn.protect_gui(gui)
+    gui.Parent = game:GetService("CoreGui")
+    parentGui = gui
+elseif game:GetService("CoreGui"):FindFirstChild("RobloxGui") then
+    parentGui = game:GetService("CoreGui")
+else
+    parentGui = player:WaitForChild("PlayerGui")
+end
+
+if parentGui:FindFirstChild("AutoJumpMenuGui") then
+    parentGui:FindFirstChild("AutoJumpMenuGui"):Destroy()
+end
+
+---------------------------------------------------------
+-- 1. GIẢ LẬP BẤM NÚT UI (SỬ DỤNG GETCONNECTIONS)
+---------------------------------------------------------
+local function pressGameButton(btnName)
+    local playerGui = player:FindFirstChild("PlayerGui")
+    if not playerGui then return false end
+
+    for _, gui in pairs(playerGui:GetChildren()) do
+        if gui:IsA("ScreenGui") and gui.Name ~= "AutoJumpMenuGui" then
+            local btn = gui:FindFirstChild(btnName, true)
+            if btn and btn:IsA("GuiButton") then
+                -- Dùng getconnections để trigger event của Executor
+                if getconnections then
+                    for _, conn in pairs(getconnections(btn.MouseButton1Click)) do
+                        conn:Fire()
+                    end
+                    for _, conn in pairs(getconnections(btn.Activated)) do
+                        conn:Fire()
+                    end
+                else
+                    btn:Activate()
+                end
+                return true
+            end
+        end
+    end
+    return false
+end
+
+---------------------------------------------------------
+-- 2. RAYCAST CHECK BẬC CẦU THANG (LOGIC SỬA BỞI CLAUDE)
+---------------------------------------------------------
+local function checkStepAhead()
+    if not hrp or not hrp.Parent then return false end
+
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterDescendantsInstances = {character}
+    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+
+    local forwardVector = hrp.CFrame.LookVector
+    local rayOrigin = hrp.Position
+
+    -- Tia thấp: Kiểm tra bậc trước mặt (tầm ngang đầu gối)
+    local lowRay = workspace:Raycast(
+        rayOrigin + Vector3.new(0, -0.5, 0),
+        forwardVector * 3.2,
+        raycastParams
+    )
+
+    if not lowRay then
+        return false 
+    end
+
+    -- Tia cao: Kiểm tra xem có bị chắn đầu không
+    local highRay = workspace:Raycast(
+        rayOrigin + Vector3.new(0, 2, 0),
+        forwardVector * 3.2,
+        raycastParams
+    )
+
+    return highRay == nil
+end
+
+---------------------------------------------------------
+-- 3. GIAO DIỆN MENU POP-UP
+---------------------------------------------------------
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "AutoJumpMenuGui"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = parentGui
+
+-- Nút mở Menu
+local openBtn = Instance.new("TextButton")
+openBtn.Name = "OpenButton"
+openBtn.Size = UDim2.new(0, 45, 0, 45)
+openBtn.Position = UDim2.new(0, 15, 0.2, 0)
+openBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+openBtn.Text = "⚡"
+openBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+openBtn.TextSize = 22
+openBtn.Active = true
+openBtn.Draggable = true
+openBtn.Parent = screenGui
+
+local openCorner = Instance.new("UICorner")
+openCorner.CornerRadius = UDim.new(0, 12)
+openCorner.Parent = openBtn
+
+-- Khung Menu
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, 250, 0, 180)
+mainFrame.Position = UDim2.new(0.5, -125, 0.35, 0)
+mainFrame.BackgroundColor3 = Color3.fromRGB(20, 22, 28)
+mainFrame.BackgroundTransparency = 0.1
+mainFrame.Visible = true
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.Parent = screenGui
+
+local frameCorner = Instance.new("UICorner")
+frameCorner.CornerRadius = UDim.new(0, 14)
+frameCorner.Parent = mainFrame
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -40, 0, 35)
+title.Position = UDim2.new(0, 12, 0, 5)
+title.BackgroundTransparency = 1
+title.Text = "AUTO JUMP V1"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.TextSize = 15
+title.Font = Enum.Font.GothamBold
+title.XAlignment = Enum.TextXAlignment.Left
+title.Parent = mainFrame
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 30, 0, 30)
+closeBtn.Position = UDim2.new(1, -35, 0, 5)
+closeBtn.BackgroundTransparency = 1
+closeBtn.Text = "✕"
+closeBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+closeBtn.TextSize = 16
+closeBtn.Parent = mainFrame
+
+-- Nút Bật/Tắt
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Size = UDim2.new(0, 85, 0, 30)
+toggleBtn.Position = UDim2.new(1, -97, 0, 50)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
+toggleBtn.Text = "OFF"
+toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleBtn.TextSize = 12
+toggleBtn.Font = Enum.Font.GothamBold
+toggleBtn.Parent = mainFrame
+
+local toggleCorner = Instance.new("UICorner")
+toggleCorner.CornerRadius = UDim.new(0, 6)
+toggleCorner.Parent = toggleBtn
+
+-- Ô chỉnh Delay
+local speedInput = Instance.new("TextBox")
+speedInput.Size = UDim2.new(0, 85, 0, 30)
+speedInput.Position = UDim2.new(1, -97, 0, 100)
+speedInput.BackgroundColor3 = Color3.fromRGB(35, 38, 48)
+speedInput.Text = tostring(jumpDelay)
+speedInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+speedInput.TextSize = 13
+speedInput.Parent = mainFrame
+
+local speedCorner = Instance.new("UICorner")
+speedCorner.CornerRadius = UDim.new(0, 6)
+speedCorner.Parent = speedInput
+
+---------------------------------------------------------
+-- 4. SỰ KIỆN GIAO DIỆN
+---------------------------------------------------------
+openBtn.MouseButton1Click:Connect(function()
+    mainFrame.Visible = not mainFrame.Visible
+end)
+
+closeBtn.MouseButton1Click:Connect(function()
+    mainFrame.Visible = false
+end)
+
+toggleBtn.MouseButton1Click:Connect(function()
+    autoJumpEnabled = not autoJumpEnabled
+    toggleBtn.Text = autoJumpEnabled and "ON" or "OFF"
+    toggleBtn.BackgroundColor3 = autoJumpEnabled and Color3.fromRGB(45, 180, 80) or Color3.fromRGB(220, 50, 50)
+end)
+
+speedInput.FocusLost:Connect(function()
+    local val = tonumber(speedInput.Text)
+    if val and val >= 0.01 then
+        jumpDelay = val
+    else
+        speedInput.Text = tostring(jumpDelay)
+    end
+end)
+
+---------------------------------------------------------
+-- 5. VÒNG LẶP XỬ LÝ DI CHUYỂN
+---------------------------------------------------------
+task.spawn(function()
+    while true do
+        if autoJumpEnabled then
+            local hasNextStepForward = checkStepAhead()
+            if hasNextStepForward then
+                pressGameButton("up") or pressGameButton("Up")
+            else
+                pressGameButton("turn") or pressGameButton("Turn")
+            end
+        end
+        task.wait(jumpDelay)
+    end
+end)
